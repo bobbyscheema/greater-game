@@ -56,13 +56,12 @@ var sensitivity_slider: HSlider
 var difficulty_button: OptionButton
 var flash_toggle: CheckButton
 var lobby_label: Label
-var ip_edit: LineEdit
 var port_spin: SpinBox
 var code_edit: LineEdit
 var host_button: Button
 var join_code_button: Button
-var join_button: Button
 var disconnect_button: Button
+var resolved_host_ip := ""
 var death_layer: CanvasLayer
 var death_root: Control
 var death_title: Label
@@ -88,7 +87,7 @@ func _ready() -> void:
 	_on_player_ammo_changed(player.ammo, player.magazine_size, player.reserve_ammo)
 	_on_ability_changed(0.0, true)
 	_on_weapon_changed("PISTOL", ["pistol"])
-	_show_menu("TIMEBREAK ARENA", "START")
+	_show_menu("TIMEBREAK ARENA", "PLAY")
 
 
 func _process(delta: float) -> void:
@@ -828,6 +827,7 @@ func _build_menu() -> void:
 	menu_title = Label.new()
 	menu_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	menu_title.add_theme_font_size_override("font_size", 34)
+	menu_title.modulate = Color(0.85, 1.0, 1.0)
 	box.add_child(menu_title)
 
 	var tabs := TabContainer.new()
@@ -840,17 +840,17 @@ func _build_menu() -> void:
 	tabs.add_child(play_tab)
 
 	start_button = Button.new()
-	start_button.text = "START"
+	start_button.text = "PLAY"
 	start_button.pressed.connect(_on_start_pressed)
 	play_tab.add_child(start_button)
 
 	var play_info := Label.new()
-	play_info.text = "Survive escalating waves, loot weapon crates, chain pickups, and control time."
+	play_info.text = "Drop into a neon city arena, bend time, loot crates, and survive escalating enemy waves."
 	play_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	play_tab.add_child(play_info)
 
 	var weapon_info := Label.new()
-	weapon_info.text = "Crates unlock shotgun, sniper, SMG, and railgun. Switch unlocked weapons with 1-4."
+	weapon_info.text = "Weapon crates unlock the shotgun, sniper, SMG, and railgun. Switch unlocked weapons with 1-4."
 	weapon_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	play_tab.add_child(weapon_info)
 
@@ -919,7 +919,7 @@ func _build_menu() -> void:
 	tabs.add_child(lobby_tab)
 
 	lobby_label = Label.new()
-	lobby_label.text = "LAN lobby: host to generate a code. Friends on the same network can join by code."
+	lobby_label.text = "Host a LAN lobby to generate a code. Players on the same network can join using that code."
 	lobby_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	lobby_tab.add_child(lobby_label)
 
@@ -930,16 +930,8 @@ func _build_menu() -> void:
 	code_edit.placeholder_text = "Enter host code"
 	lobby_tab.add_child(code_edit)
 
-	var ip_label := Label.new()
-	ip_label.text = "Fallback Host IP"
-	lobby_tab.add_child(ip_label)
-	ip_edit = LineEdit.new()
-	ip_edit.text = "127.0.0.1"
-	ip_edit.placeholder_text = "192.168.1.25"
-	lobby_tab.add_child(ip_edit)
-
 	var port_label := Label.new()
-	port_label.text = "Port"
+	port_label.text = "Lobby Port"
 	lobby_tab.add_child(port_label)
 	port_spin = SpinBox.new()
 	port_spin.min_value = 1024
@@ -948,7 +940,7 @@ func _build_menu() -> void:
 	lobby_tab.add_child(port_spin)
 
 	host_button = Button.new()
-	host_button.text = "HOST LAN GAME"
+	host_button.text = "HOST CODE LOBBY"
 	host_button.pressed.connect(_on_host_pressed)
 	lobby_tab.add_child(host_button)
 
@@ -956,11 +948,6 @@ func _build_menu() -> void:
 	join_code_button.text = "JOIN BY CODE"
 	join_code_button.pressed.connect(_on_join_code_pressed)
 	lobby_tab.add_child(join_code_button)
-
-	join_button = Button.new()
-	join_button.text = "JOIN BY IP"
-	join_button.pressed.connect(_on_join_pressed)
-	lobby_tab.add_child(join_button)
 
 	disconnect_button = Button.new()
 	disconnect_button.text = "DISCONNECT"
@@ -1104,7 +1091,7 @@ func _show_death_screen() -> void:
 	death_root.visible = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	var code_text := lobby_code if not lobby_code.is_empty() else desired_join_code
-	var join_text := "Lobby: %s   IP: %s   Port: %d" % [code_text if not code_text.is_empty() else "single-player", ip_edit.text if ip_edit else "-", network_port]
+	var join_text := "Lobby code: %s   Port: %d" % [code_text if not code_text.is_empty() else "single-player", network_port]
 	death_info.text = "%s\nRespawn keeps you in the same lobby." % join_text
 
 
@@ -1153,7 +1140,7 @@ func _on_host_pressed() -> void:
 	code_edit.text = lobby_code
 	_start_discovery_broadcast()
 	_prepare_local_network_player(1)
-	_set_lobby_status("Hosting lobby %s on port %d. Friends can join by code." % [lobby_code, network_port])
+	_set_lobby_status("Hosting lobby %s. Share this code with players on your network." % lobby_code)
 
 
 func _on_join_code_pressed() -> void:
@@ -1165,16 +1152,17 @@ func _on_join_code_pressed() -> void:
 	_set_lobby_status("Searching LAN for lobby %s..." % desired_join_code)
 
 
-func _on_join_pressed() -> void:
-	network_port = int(port_spin.value)
+func _connect_to_discovered_lobby(host_ip: String, port: int) -> void:
+	network_port = port
+	resolved_host_ip = host_ip
 	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_client(ip_edit.text.strip_edges(), network_port)
+	var err := peer.create_client(resolved_host_ip, network_port)
 	if err != OK:
-		_set_lobby_status("Join failed before connecting.")
+		_set_lobby_status("Join failed. Check the lobby code and network.")
 		return
 	multiplayer.multiplayer_peer = peer
 	network_mode = "client"
-	_set_lobby_status("Connecting to %s:%d..." % [ip_edit.text, network_port])
+	_set_lobby_status("Joining lobby %s..." % desired_join_code)
 
 
 func _on_disconnect_pressed() -> void:
@@ -1185,6 +1173,7 @@ func _on_disconnect_pressed() -> void:
 	network_mode = "single"
 	lobby_code = ""
 	desired_join_code = ""
+	resolved_host_ip = ""
 	spawned_peer_ids.clear()
 	for node in get_tree().get_nodes_in_group("network_player"):
 		if node != player:
@@ -1300,7 +1289,7 @@ func _start_discovery_listen() -> void:
 	discovery_listener = PacketPeerUDP.new()
 	var err := discovery_listener.bind(discovery_port)
 	if err != OK:
-		_set_lobby_status("Could not listen for lobbies. Use Join by IP.")
+		_set_lobby_status("Could not search for lobbies. Check firewall/network permissions.")
 
 
 func _stop_lobby_discovery() -> void:
@@ -1327,9 +1316,8 @@ func _update_lobby_discovery(delta: float) -> void:
 			var parts := message.split("|")
 			if parts.size() == 3 and parts[0] == "GREATER_GAME" and parts[1] == desired_join_code:
 				var host_ip := discovery_listener.get_packet_ip()
-				ip_edit.text = host_ip
 				port_spin.value = int(parts[2])
 				_stop_lobby_discovery()
-				_set_lobby_status("Found lobby %s at %s:%s" % [desired_join_code, host_ip, parts[2]])
-				_on_join_pressed()
+				_set_lobby_status("Found lobby %s. Connecting..." % desired_join_code)
+				_connect_to_discovered_lobby(host_ip, int(parts[2]))
 				return

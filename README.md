@@ -1,6 +1,6 @@
-# Greater Game
+# Timebreak Arena
 
-A Godot 4.7 first-person arena shooter prototype inspired by time-bending shooters.
+A Godot 4.7 first-person arena shooter with time-bending combat, wave survival, LAN lobbies, weapon crates, and PvP-friendly local multiplayer.
 
 ## Play
 
@@ -28,11 +28,14 @@ The pause/menu screen has Play, Settings, and Info tabs. Settings currently cove
 
 Use the `Lobby` tab from the menu:
 
-- Host: choose a port and press `HOST LAN GAME`. The game generates a short lobby code.
+- Host: choose a port and press `HOST CODE LOBBY`. The game generates a short lobby code.
 - Join by code: enter the host's lobby code and press `JOIN BY CODE`. The game searches the LAN and connects automatically.
-- Join by IP: if LAN broadcast is blocked, enter the host machine's local IP address and port, then press `JOIN BY IP`.
 - Start/resume from the `Play` tab after hosting or joining.
 
 The host controls wave spawning and enemy simulation, then syncs enemy positions, health, deaths, wave counts, enemy bullets, and pickups to everyone else. Connected players get their own first-person body, player movement is synchronized, and player bullets can damage/take out other players in the same lobby.
 
-If you die in a LAN lobby, the game shows a `YOU DIED` screen with the current lobby code/IP details and a `RESPAWN` button. Respawning keeps you in the same lobby instead of kicking you back out. Menus and death screens block movement, shooting, abilities, and local damage until you press Play or Respawn.
+If you die in a LAN lobby, the game shows a `YOU DIED` screen with the current lobby code and a `RESPAWN` button. Respawning keeps you in the same lobby instead of kicking you back out. Menus and death screens block movement, shooting, abilities, and local damage until you press Play or Respawn.
+
+## Publishing Notes
+
+The project avoids external art dependencies by generating its arena, buildings, lighting, pickups, bullets, and UI in Godot. The menu is code-only for LAN joining, so players can host and join without manually handling IP addresses.
