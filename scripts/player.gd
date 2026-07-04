@@ -145,6 +145,8 @@ func _physics_process(delta: float) -> void:
 func take_damage(amount: int, _hit_position: Vector3) -> void:
 	if dead:
 		return
+	if multiplayer.has_multiplayer_peer() and not _is_locally_controlled():
+		return
 	if shield_timer > 0.0:
 		amount = max(amount - 1, 0)
 		if amount <= 0:
@@ -156,6 +158,7 @@ func take_damage(amount: int, _hit_position: Vector3) -> void:
 	if health <= 0:
 		dead = true
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	_sync_health_state()
 
 
 func get_motion_strength() -> float:
@@ -247,11 +250,15 @@ func _fire() -> void:
 	var profile: Dictionary = weapon_profiles[current_weapon]
 	var pellets := int(profile["pellets"])
 	for i in range(pellets):
-		var bullet = bullet_scene.instantiate()
-		get_tree().current_scene.add_child(bullet)
 		var direction := _spread_direction(float(profile["spread"]))
 		var damage := int(profile["damage"]) * damage_multiplier
-		bullet.setup(muzzle.global_position, direction, float(profile["speed"]), damage, "player", profile["tint"])
+		var game := get_tree().get_first_node_in_group("game")
+		if multiplayer.has_multiplayer_peer() and game and game.has_method("request_player_bullet"):
+			game.request_player_bullet(muzzle.global_position, direction, float(profile["speed"]), damage, profile["tint"], multiplayer.get_unique_id())
+		else:
+			var bullet = bullet_scene.instantiate()
+			get_tree().current_scene.add_child(bullet)
+			bullet.setup_network(muzzle.global_position, direction, float(profile["speed"]), damage, "player", profile["tint"], 0)
 	shot_fired.emit()
 
 
@@ -382,3 +389,26 @@ func sync_remote_transform(pos: Vector3, rot: Vector3) -> void:
 		return
 	remote_target_position = pos
 	remote_target_rotation = rot
+
+
+func _sync_health_state() -> void:
+	if multiplayer.has_multiplayer_peer() and is_multiplayer_authority():
+		sync_remote_health.rpc(health, dead)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func sync_remote_health(new_health: int, is_dead: bool) -> void:
+	if is_multiplayer_authority():
+		return
+	health = new_health
+	dead = is_dead
+	if dead:
+		velocity = Vector3.ZERO
+		if has_node("Body"):
+			var body := $Body as MeshInstance3D
+			var mat := StandardMaterial3D.new()
+			mat.albedo_color = Color(0.22, 0.02, 0.02)
+			mat.emission_enabled = true
+			mat.emission = Color(0.35, 0.0, 0.0)
+			mat.emission_energy_multiplier = 0.5
+			body.material_override = mat

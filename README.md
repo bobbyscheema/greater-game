@@ -28,8 +28,9 @@ The pause/menu screen has Play, Settings, and Info tabs. Settings currently cove
 
 Use the `Lobby` tab from the menu:
 
-- Host: choose a port and press `HOST LAN GAME`.
-- Join: enter the host machine's local IP address and port, then press `JOIN BY IP`.
+- Host: choose a port and press `HOST LAN GAME`. The game generates a short lobby code.
+- Join by code: enter the host's lobby code and press `JOIN BY CODE`. The game searches the LAN and connects automatically.
+- Join by IP: if LAN broadcast is blocked, enter the host machine's local IP address and port, then press `JOIN BY IP`.
 - Start/resume from the `Play` tab after hosting or joining.
 
-The host controls wave spawning. Connected players get their own first-person body, and player movement, wave enemy spawns, and pickups are shared across the LAN session.
+The host controls wave spawning. Connected players get their own first-person body, player movement is synchronized, wave enemy spawns and pickups are shared, and player bullets can damage/take out other players in the same lobby.

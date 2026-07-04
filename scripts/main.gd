@@ -23,8 +23,14 @@ var screen_flash_enabled := true
 var network_mode := "single"
 var lobby_status := "Offline"
 var network_port := 24570
+var discovery_port := 24571
 var max_players := 6
 var spawned_peer_ids := []
+var lobby_code := ""
+var desired_join_code := ""
+var discovery_timer := 0.0
+var discovery_broadcaster: PacketPeerUDP
+var discovery_listener: PacketPeerUDP
 
 @onready var player = $Player
 
@@ -51,7 +57,9 @@ var flash_toggle: CheckButton
 var lobby_label: Label
 var ip_edit: LineEdit
 var port_spin: SpinBox
+var code_edit: LineEdit
 var host_button: Button
+var join_code_button: Button
 var join_button: Button
 var disconnect_button: Button
 
@@ -77,6 +85,7 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	_update_lobby_discovery(delta)
 	if Input.is_action_just_pressed("reset_game"):
 		get_tree().reload_current_scene()
 		return
@@ -271,6 +280,33 @@ func _try_time_burst() -> void:
 		if projectile is Node3D and projectile.global_position.distance_to(origin) <= 9.0 and projectile.get("team") == "enemy":
 			spawn_impact(projectile.global_position, Color(0.1, 0.9, 1.0))
 			projectile.queue_free()
+
+
+func request_player_bullet(start_position: Vector3, direction: Vector3, speed: float, bullet_damage: int, tint: Color, shooter_peer_id: int) -> void:
+	if not multiplayer.has_multiplayer_peer():
+		_spawn_player_bullet_instance(start_position, direction, speed, bullet_damage, tint, shooter_peer_id)
+		return
+	if multiplayer.is_server():
+		spawn_player_bullet_network.rpc(start_position, direction, speed, bullet_damage, tint, shooter_peer_id)
+	else:
+		request_player_bullet_server.rpc_id(1, start_position, direction, speed, bullet_damage, tint, shooter_peer_id)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func request_player_bullet_server(start_position: Vector3, direction: Vector3, speed: float, bullet_damage: int, tint: Color, shooter_peer_id: int) -> void:
+	if multiplayer.is_server():
+		spawn_player_bullet_network.rpc(start_position, direction, speed, bullet_damage, tint, shooter_peer_id)
+
+
+@rpc("authority", "call_local", "reliable")
+func spawn_player_bullet_network(start_position: Vector3, direction: Vector3, speed: float, bullet_damage: int, tint: Color, shooter_peer_id: int) -> void:
+	_spawn_player_bullet_instance(start_position, direction, speed, bullet_damage, tint, shooter_peer_id)
+
+
+func _spawn_player_bullet_instance(start_position: Vector3, direction: Vector3, speed: float, bullet_damage: int, tint: Color, shooter_peer_id: int) -> void:
+	var bullet = preload("res://scenes/Bullet.tscn").instantiate()
+	add_child(bullet)
+	bullet.setup_network(start_position, direction, speed, bullet_damage, "player", tint, shooter_peer_id)
 
 
 func _pick_enemy_variant() -> String:
@@ -777,12 +813,19 @@ func _build_menu() -> void:
 	tabs.add_child(lobby_tab)
 
 	lobby_label = Label.new()
-	lobby_label.text = "LAN lobby: host a game or join a host on the same local network."
+	lobby_label.text = "LAN lobby: host to generate a code. Friends on the same network can join by code."
 	lobby_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	lobby_tab.add_child(lobby_label)
 
+	var code_label := Label.new()
+	code_label.text = "Lobby Code"
+	lobby_tab.add_child(code_label)
+	code_edit = LineEdit.new()
+	code_edit.placeholder_text = "Enter host code"
+	lobby_tab.add_child(code_edit)
+
 	var ip_label := Label.new()
-	ip_label.text = "Host IP"
+	ip_label.text = "Fallback Host IP"
 	lobby_tab.add_child(ip_label)
 	ip_edit = LineEdit.new()
 	ip_edit.text = "127.0.0.1"
@@ -802,6 +845,11 @@ func _build_menu() -> void:
 	host_button.text = "HOST LAN GAME"
 	host_button.pressed.connect(_on_host_pressed)
 	lobby_tab.add_child(host_button)
+
+	join_code_button = Button.new()
+	join_code_button.text = "JOIN BY CODE"
+	join_code_button.pressed.connect(_on_join_code_pressed)
+	lobby_tab.add_child(join_code_button)
 
 	join_button = Button.new()
 	join_button.text = "JOIN BY IP"
@@ -922,8 +970,20 @@ func _on_host_pressed() -> void:
 		return
 	multiplayer.multiplayer_peer = peer
 	network_mode = "host"
+	lobby_code = _generate_lobby_code()
+	code_edit.text = lobby_code
+	_start_discovery_broadcast()
 	_prepare_local_network_player(1)
-	_set_lobby_status("Hosting on port %d. Share your local IP with friends." % network_port)
+	_set_lobby_status("Hosting lobby %s on port %d. Friends can join by code." % [lobby_code, network_port])
+
+
+func _on_join_code_pressed() -> void:
+	desired_join_code = code_edit.text.strip_edges().to_upper()
+	if desired_join_code.is_empty():
+		_set_lobby_status("Enter a lobby code first.")
+		return
+	_start_discovery_listen()
+	_set_lobby_status("Searching LAN for lobby %s..." % desired_join_code)
 
 
 func _on_join_pressed() -> void:
@@ -942,7 +1002,10 @@ func _on_disconnect_pressed() -> void:
 	if multiplayer.has_multiplayer_peer():
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = null
+	_stop_lobby_discovery()
 	network_mode = "single"
+	lobby_code = ""
+	desired_join_code = ""
 	spawned_peer_ids.clear()
 	for node in get_tree().get_nodes_in_group("network_player"):
 		if node != player:
@@ -1033,4 +1096,61 @@ func _network_spawn_position(peer_id: int) -> Vector3:
 func _set_lobby_status(text: String) -> void:
 	lobby_status = text
 	if lobby_label:
-		lobby_label.text = "%s\nMode: %s\nLocal ID: %d" % [text, network_mode, multiplayer.get_unique_id()]
+		var code_text := lobby_code if not lobby_code.is_empty() else desired_join_code
+		lobby_label.text = "%s\nMode: %s\nCode: %s\nLocal ID: %d" % [text, network_mode, code_text if not code_text.is_empty() else "-", multiplayer.get_unique_id()]
+
+
+func _generate_lobby_code() -> String:
+	var alphabet := "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	var code := ""
+	for i in range(4):
+		code += alphabet.substr(randi_range(0, alphabet.length() - 1), 1)
+	return code
+
+
+func _start_discovery_broadcast() -> void:
+	discovery_broadcaster = PacketPeerUDP.new()
+	discovery_broadcaster.set_broadcast_enabled(true)
+	discovery_broadcaster.set_dest_address("255.255.255.255", discovery_port)
+	discovery_timer = 0.0
+
+
+func _start_discovery_listen() -> void:
+	if discovery_listener:
+		discovery_listener.close()
+	discovery_listener = PacketPeerUDP.new()
+	var err := discovery_listener.bind(discovery_port)
+	if err != OK:
+		_set_lobby_status("Could not listen for lobbies. Use Join by IP.")
+
+
+func _stop_lobby_discovery() -> void:
+	if discovery_broadcaster:
+		discovery_broadcaster.close()
+		discovery_broadcaster = null
+	if discovery_listener:
+		discovery_listener.close()
+		discovery_listener = null
+
+
+func _update_lobby_discovery(delta: float) -> void:
+	if discovery_broadcaster and network_mode == "host":
+		discovery_timer -= delta
+		if discovery_timer <= 0.0:
+			discovery_timer = 0.75
+			var payload := "GREATER_GAME|%s|%d" % [lobby_code, network_port]
+			discovery_broadcaster.put_packet(payload.to_utf8_buffer())
+
+	if discovery_listener and network_mode != "host":
+		while discovery_listener.get_available_packet_count() > 0:
+			var packet := discovery_listener.get_packet()
+			var message := packet.get_string_from_utf8()
+			var parts := message.split("|")
+			if parts.size() == 3 and parts[0] == "GREATER_GAME" and parts[1] == desired_join_code:
+				var host_ip := discovery_listener.get_packet_ip()
+				ip_edit.text = host_ip
+				port_spin.value = int(parts[2])
+				_stop_lobby_discovery()
+				_set_lobby_status("Found lobby %s at %s:%s" % [desired_join_code, host_ip, parts[2]])
+				_on_join_pressed()
+				return

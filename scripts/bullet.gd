@@ -7,6 +7,7 @@ class_name TimeBullet
 
 var velocity := Vector3.ZERO
 var team := "player"
+var owner_peer_id := 0
 var life := 0.0
 var impact_tint := Color.WHITE
 
@@ -26,6 +27,11 @@ func setup(start_position: Vector3, direction: Vector3, speed: float, bullet_dam
 	impact_tint = tint
 	_set_tint(tint)
 	look_at(global_position + direction.normalized(), Vector3.UP)
+
+
+func setup_network(start_position: Vector3, direction: Vector3, speed: float, bullet_damage: int, source_team: String, tint: Color, source_peer_id: int) -> void:
+	setup(start_position, direction, speed, bullet_damage, source_team, tint)
+	owner_peer_id = source_peer_id
 
 
 func _physics_process(delta: float) -> void:
@@ -81,7 +87,13 @@ func _should_ignore(body: Object) -> bool:
 	if not body is Node:
 		return false
 	var node := body as Node
-	return (team == "player" and node.is_in_group("player")) or (team == "enemy" and node.is_in_group("enemy"))
+	if team == "player":
+		if owner_peer_id == 0:
+			return node.is_in_group("player")
+		return node.is_in_group("player") and node.get_multiplayer_authority() == owner_peer_id
+	if team == "enemy":
+		return node.is_in_group("enemy")
+	return false
 
 
 func _ray_hit(from: Vector3, to: Vector3) -> Dictionary:
