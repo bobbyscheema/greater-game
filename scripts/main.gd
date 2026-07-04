@@ -766,10 +766,6 @@ func _build_hud() -> void:
 	status_label.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	status_label.text = ""
 
-	var instructions := _make_label(Vector2(24, 680), 15)
-	instructions.text = "WASD MOVE  SHIFT SPRINT  SPACE JUMP  LMB SHOOT  R RELOAD  RMB SLOW  E BURST  Q DASH  ESC PAUSE  F5 RESTART"
-	instructions.modulate = Color(0.72, 0.82, 0.86, 0.82)
-
 	crosshair = Control.new()
 	crosshair.set_anchors_preset(Control.PRESET_CENTER)
 	crosshair.offset_left = -12
@@ -809,58 +805,81 @@ func _build_menu() -> void:
 
 	var shade := ColorRect.new()
 	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
-	shade.color = Color(0.0, 0.0, 0.0, 0.74)
+	shade.color = Color(0.0, 0.0, 0.0, 0.82)
 	menu_root.add_child(shade)
 
 	var panel := PanelContainer.new()
 	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.offset_left = -320
-	panel.offset_top = -245
-	panel.offset_right = 320
-	panel.offset_bottom = 245
+	panel.offset_left = -430
+	panel.offset_top = -285
+	panel.offset_right = 430
+	panel.offset_bottom = 285
+	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.025, 0.035, 0.045, 0.94), Color(0.0, 0.78, 1.0, 0.75), 2, 8))
 	menu_root.add_child(panel)
 
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 28)
+	margin.add_theme_constant_override("margin_top", 24)
+	margin.add_theme_constant_override("margin_right", 28)
+	margin.add_theme_constant_override("margin_bottom", 24)
+	panel.add_child(margin)
+
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 12)
-	panel.add_child(box)
+	box.add_theme_constant_override("separation", 14)
+	margin.add_child(box)
 
 	menu_title = Label.new()
 	menu_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	menu_title.add_theme_font_size_override("font_size", 34)
+	menu_title.add_theme_font_size_override("font_size", 42)
 	menu_title.modulate = Color(0.85, 1.0, 1.0)
 	box.add_child(menu_title)
 
+	var subtitle := Label.new()
+	subtitle.text = "Neon wave survival with time-bending combat and code-only LAN lobbies"
+	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	subtitle.modulate = Color(0.62, 0.76, 0.82)
+	subtitle.add_theme_font_size_override("font_size", 15)
+	box.add_child(subtitle)
+
 	var tabs := TabContainer.new()
-	tabs.custom_minimum_size = Vector2(560, 340)
+	tabs.custom_minimum_size = Vector2(780, 390)
+	tabs.add_theme_stylebox_override("panel", _panel_style(Color(0.01, 0.015, 0.02, 0.42), Color(0.13, 0.22, 0.26, 0.65), 1, 6))
+	tabs.add_theme_color_override("font_selected_color", Color(0.82, 1.0, 1.0))
+	tabs.add_theme_color_override("font_unselected_color", Color(0.55, 0.68, 0.72))
 	box.add_child(tabs)
 
 	var play_tab := VBoxContainer.new()
 	play_tab.name = "Play"
-	play_tab.add_theme_constant_override("separation", 12)
+	play_tab.add_theme_constant_override("separation", 14)
 	tabs.add_child(play_tab)
 
 	start_button = Button.new()
 	start_button.text = "PLAY"
 	start_button.pressed.connect(_on_start_pressed)
+	_style_primary_button(start_button)
 	play_tab.add_child(start_button)
 
 	var play_info := Label.new()
 	play_info.text = "Drop into a neon city arena, bend time, loot crates, and survive escalating enemy waves."
 	play_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	play_info.modulate = Color(0.84, 0.94, 0.96)
+	play_info.add_theme_font_size_override("font_size", 18)
 	play_tab.add_child(play_info)
 
 	var weapon_info := Label.new()
 	weapon_info.text = "Weapon crates unlock the shotgun, sniper, SMG, and railgun. Switch unlocked weapons with 1-4."
 	weapon_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	weapon_info.modulate = Color(0.62, 0.76, 0.82)
 	play_tab.add_child(weapon_info)
 
 	var settings_tab := VBoxContainer.new()
 	settings_tab.name = "Settings"
-	settings_tab.add_theme_constant_override("separation", 9)
+	settings_tab.add_theme_constant_override("separation", 11)
 	tabs.add_child(settings_tab)
 
 	var sens_label := Label.new()
 	sens_label.text = "Mouse Sensitivity: affects first-person camera turn speed."
+	sens_label.modulate = Color(0.84, 0.94, 0.96)
 	settings_tab.add_child(sens_label)
 	sensitivity_slider = HSlider.new()
 	sensitivity_slider.min_value = 0.08
@@ -873,6 +892,7 @@ func _build_menu() -> void:
 	var difficulty_label := Label.new()
 	difficulty_label.text = "Difficulty: changes enemy count, health, speed, and variant pressure."
 	difficulty_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	difficulty_label.modulate = Color(0.84, 0.94, 0.96)
 	settings_tab.add_child(difficulty_label)
 	difficulty_button = OptionButton.new()
 	difficulty_button.add_item("Easy")
@@ -886,6 +906,7 @@ func _build_menu() -> void:
 	flash_toggle.text = "Damage Flash: red screen flash when hit"
 	flash_toggle.button_pressed = true
 	flash_toggle.toggled.connect(_on_flash_toggled)
+	flash_toggle.modulate = Color(0.84, 0.94, 0.96)
 	settings_tab.add_child(flash_toggle)
 
 	var settings_note := Label.new()
@@ -896,67 +917,81 @@ func _build_menu() -> void:
 
 	var info_tab := VBoxContainer.new()
 	info_tab.name = "Info"
-	info_tab.add_theme_constant_override("separation", 8)
+	info_tab.add_theme_constant_override("separation", 11)
 	tabs.add_child(info_tab)
 
 	var controls := Label.new()
 	controls.text = "Controls\nWASD move  Shift sprint  Space jump\nLMB shoot  RMB slow time  R reload\nQ dash  E time burst  1-4 switch weapons\nEsc pause  F5 restart"
+	controls.modulate = Color(0.84, 0.94, 0.96)
 	info_tab.add_child(controls)
 
 	var powerups := Label.new()
 	powerups.text = "Powerups\nAmmo, health, speed boost, shield, overcharge, damage boost, bottomless ammo, dash reset, weapon crates."
 	powerups.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	powerups.modulate = Color(0.72, 0.86, 0.9)
 	info_tab.add_child(powerups)
 
 	var weapons := Label.new()
 	weapons.text = "Weapons\nPistol: reliable starter\nShotgun: close range spread\nSniper: slow high damage\nSMG: fast sustained fire\nRailgun: rare heavy precision"
 	weapons.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	weapons.modulate = Color(0.72, 0.86, 0.9)
 	info_tab.add_child(weapons)
 
 	var lobby_tab := VBoxContainer.new()
 	lobby_tab.name = "Lobby"
-	lobby_tab.add_theme_constant_override("separation", 8)
+	lobby_tab.add_theme_constant_override("separation", 11)
 	tabs.add_child(lobby_tab)
 
 	lobby_label = Label.new()
 	lobby_label.text = "Host a LAN lobby to generate a code. Players on the same network can join using that code."
 	lobby_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lobby_label.modulate = Color(0.84, 0.94, 0.96)
 	lobby_tab.add_child(lobby_label)
 
 	var code_label := Label.new()
 	code_label.text = "Lobby Code"
+	code_label.modulate = Color(0.62, 0.76, 0.82)
 	lobby_tab.add_child(code_label)
 	code_edit = LineEdit.new()
 	code_edit.placeholder_text = "Enter host code"
+	code_edit.custom_minimum_size = Vector2(0, 42)
+	code_edit.add_theme_stylebox_override("normal", _panel_style(Color(0.03, 0.045, 0.055, 0.9), Color(0.0, 0.58, 0.78, 0.65), 1, 4))
+	code_edit.add_theme_stylebox_override("focus", _panel_style(Color(0.03, 0.055, 0.065, 0.95), Color(0.0, 0.88, 1.0, 0.95), 2, 4))
 	lobby_tab.add_child(code_edit)
 
 	var port_label := Label.new()
 	port_label.text = "Lobby Port"
+	port_label.modulate = Color(0.62, 0.76, 0.82)
 	lobby_tab.add_child(port_label)
 	port_spin = SpinBox.new()
 	port_spin.min_value = 1024
 	port_spin.max_value = 65535
 	port_spin.value = network_port
+	port_spin.custom_minimum_size = Vector2(0, 42)
 	lobby_tab.add_child(port_spin)
 
 	host_button = Button.new()
 	host_button.text = "HOST CODE LOBBY"
 	host_button.pressed.connect(_on_host_pressed)
+	_style_primary_button(host_button)
 	lobby_tab.add_child(host_button)
 
 	join_code_button = Button.new()
 	join_code_button.text = "JOIN BY CODE"
 	join_code_button.pressed.connect(_on_join_code_pressed)
+	_style_secondary_button(join_code_button)
 	lobby_tab.add_child(join_code_button)
 
 	disconnect_button = Button.new()
 	disconnect_button.text = "DISCONNECT"
 	disconnect_button.pressed.connect(_on_disconnect_pressed)
+	_style_secondary_button(disconnect_button)
 	lobby_tab.add_child(disconnect_button)
 
 	var quit_button := Button.new()
 	quit_button.text = "QUIT"
 	quit_button.pressed.connect(Callable(get_tree(), "quit"))
+	_style_secondary_button(quit_button)
 	play_tab.add_child(quit_button)
 
 
@@ -981,6 +1016,7 @@ func _build_death_screen() -> void:
 	panel.offset_top = -135
 	panel.offset_right = 230
 	panel.offset_bottom = 135
+	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.08, 0.015, 0.02, 0.94), Color(1.0, 0.1, 0.1, 0.8), 2, 8))
 	death_root.add_child(panel)
 
 	var box := VBoxContainer.new()
@@ -1001,7 +1037,39 @@ func _build_death_screen() -> void:
 	respawn_button = Button.new()
 	respawn_button.text = "RESPAWN"
 	respawn_button.pressed.connect(_on_respawn_pressed)
+	_style_primary_button(respawn_button)
 	box.add_child(respawn_button)
+
+
+func _panel_style(fill: Color, border: Color, border_width: int, radius: int) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = fill
+	style.border_color = border
+	style.set_border_width_all(border_width)
+	style.set_corner_radius_all(radius)
+	style.content_margin_left = 14
+	style.content_margin_right = 14
+	style.content_margin_top = 12
+	style.content_margin_bottom = 12
+	return style
+
+
+func _style_primary_button(button: Button) -> void:
+	button.custom_minimum_size = Vector2(0, 46)
+	button.add_theme_font_size_override("font_size", 18)
+	button.add_theme_color_override("font_color", Color(0.02, 0.05, 0.06))
+	button.add_theme_stylebox_override("normal", _panel_style(Color(0.0, 0.86, 1.0, 0.95), Color(0.72, 1.0, 1.0, 1.0), 1, 5))
+	button.add_theme_stylebox_override("hover", _panel_style(Color(0.4, 1.0, 1.0, 1.0), Color(0.92, 1.0, 1.0, 1.0), 1, 5))
+	button.add_theme_stylebox_override("pressed", _panel_style(Color(0.0, 0.55, 0.72, 1.0), Color(0.72, 1.0, 1.0, 1.0), 1, 5))
+
+
+func _style_secondary_button(button: Button) -> void:
+	button.custom_minimum_size = Vector2(0, 40)
+	button.add_theme_font_size_override("font_size", 15)
+	button.add_theme_color_override("font_color", Color(0.84, 0.96, 1.0))
+	button.add_theme_stylebox_override("normal", _panel_style(Color(0.035, 0.055, 0.065, 0.88), Color(0.0, 0.45, 0.65, 0.7), 1, 5))
+	button.add_theme_stylebox_override("hover", _panel_style(Color(0.06, 0.11, 0.13, 0.95), Color(0.0, 0.8, 1.0, 0.95), 1, 5))
+	button.add_theme_stylebox_override("pressed", _panel_style(Color(0.02, 0.04, 0.05, 1.0), Color(0.0, 0.8, 1.0, 0.95), 1, 5))
 
 
 func _make_label(pos: Vector2, font_size: int) -> Label:
