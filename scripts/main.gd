@@ -67,6 +67,7 @@ var death_root: Control
 var death_title: Label
 var death_info: Label
 var respawn_button: Button
+var menu_bg_lines: Array[ColorRect] = []
 
 func _ready() -> void:
 	add_to_group("game")
@@ -75,6 +76,7 @@ func _ready() -> void:
 	_build_hud()
 	_build_menu()
 	_build_death_screen()
+	_set_hud_visible(false)
 	_connect_network_signals()
 	player.health_changed.connect(_on_player_health_changed)
 	player.shot_fired.connect(_on_player_shot)
@@ -92,6 +94,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_update_lobby_discovery(delta)
+	_animate_menu_background(delta)
 	if Input.is_action_just_pressed("reset_game"):
 		get_tree().reload_current_scene()
 		return
@@ -805,8 +808,9 @@ func _build_menu() -> void:
 
 	var shade := ColorRect.new()
 	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
-	shade.color = Color(0.0, 0.0, 0.0, 0.82)
+	shade.color = Color(0.0, 0.0, 0.0, 0.92)
 	menu_root.add_child(shade)
+	_build_menu_background()
 
 	var panel := PanelContainer.new()
 	panel.set_anchors_preset(Control.PRESET_CENTER)
@@ -1041,6 +1045,49 @@ func _build_death_screen() -> void:
 	box.add_child(respawn_button)
 
 
+func _build_menu_background() -> void:
+	for i in range(11):
+		var line := ColorRect.new()
+		line.position = Vector2(-120, 72 + i * 58)
+		line.size = Vector2(1520, 2 + (i % 3))
+		line.rotation = -0.08
+		line.color = Color(0.0, 0.55, 0.78, 0.08 + float(i % 4) * 0.025)
+		menu_root.add_child(line)
+		menu_bg_lines.append(line)
+
+	for i in range(7):
+		var pillar := ColorRect.new()
+		pillar.position = Vector2(90 + i * 170, 0)
+		pillar.size = Vector2(2 + (i % 2), 760)
+		pillar.color = Color(0.0, 0.75, 1.0, 0.035)
+		menu_root.add_child(pillar)
+		menu_bg_lines.append(pillar)
+
+	var glow := ColorRect.new()
+	glow.set_anchors_preset(Control.PRESET_FULL_RECT)
+	glow.color = Color(0.0, 0.18, 0.24, 0.16)
+	menu_root.add_child(glow)
+
+
+func _animate_menu_background(delta: float) -> void:
+	if not menu_root or not menu_root.visible:
+		return
+	for i in range(menu_bg_lines.size()):
+		var line := menu_bg_lines[i]
+		if not is_instance_valid(line):
+			continue
+		var offset := sin(Time.get_ticks_msec() * 0.0012 + float(i) * 0.7) * 12.0
+		if line.size.x > line.size.y:
+			line.position.x = -120 + offset
+		else:
+			line.position.y = offset * 0.35
+
+
+func _set_hud_visible(visible: bool) -> void:
+	if hud_layer:
+		hud_layer.visible = visible
+
+
 func _panel_style(fill: Color, border: Color, border_width: int, radius: int) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
 	style.bg_color = fill
@@ -1112,6 +1159,7 @@ func _show_wave_banner(text: String) -> void:
 func _show_menu(title: String, action_text: String) -> void:
 	paused_for_menu = true
 	menu_root.visible = true
+	_set_hud_visible(false)
 	menu_title.text = title
 	start_button.text = action_text
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -1123,6 +1171,7 @@ func _resume_game() -> void:
 		return
 	paused_for_menu = false
 	menu_root.visible = false
+	_set_hud_visible(true)
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
@@ -1157,6 +1206,7 @@ func _show_death_screen() -> void:
 	if not death_root:
 		return
 	death_root.visible = true
+	_set_hud_visible(false)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	var code_text := lobby_code if not lobby_code.is_empty() else desired_join_code
 	var join_text := "Lobby code: %s   Port: %d" % [code_text if not code_text.is_empty() else "single-player", network_port]
@@ -1166,6 +1216,7 @@ func _show_death_screen() -> void:
 func _hide_death_screen() -> void:
 	if death_root:
 		death_root.visible = false
+	_set_hud_visible(true)
 	if game_started and not paused_for_menu:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
