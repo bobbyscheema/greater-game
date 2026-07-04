@@ -812,7 +812,7 @@ func _build_hud() -> void:
 
 func _build_audio() -> void:
 	music_player = AudioStreamPlayer.new()
-	music_player.stream = load("res://assets/audio/music_loop.wav")
+	music_player.stream = load("res://assets/audio/space_theme_loop.wav")
 	if music_player.stream is AudioStreamWAV:
 		(music_player.stream as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_FORWARD
 	music_player.volume_db = _volume_to_db(music_volume)
