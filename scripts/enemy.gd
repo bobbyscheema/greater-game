@@ -20,6 +20,10 @@ var preferred_range := 5.5
 var retreat_range := 3.0
 var shoot_range := 24.0
 var contact_cooldown := 0.0
+var network_id := -1
+var sync_timer := 0.0
+var remote_target_position := Vector3.ZERO
+var remote_target_rotation := Vector3.ZERO
 
 @onready var muzzle: Marker3D = $Muzzle
 @onready var body_mesh: MeshInstance3D = $MeshInstance3D
@@ -27,11 +31,22 @@ var contact_cooldown := 0.0
 func _ready() -> void:
 	health = max_health
 	strafe_phase = randf() * TAU
+	remote_target_position = global_position
+	remote_target_rotation = rotation
 	_apply_variant_material()
 
 
 func _physics_process(delta: float) -> void:
-	var player := get_tree().get_first_node_in_group("player") as Node3D
+	var game := get_tree().get_first_node_in_group("game")
+	if game and game.has_method("is_game_active") and not game.is_game_active():
+		velocity = Vector3.ZERO
+		return
+	if multiplayer.has_multiplayer_peer() and not multiplayer.is_server():
+		global_position = global_position.lerp(remote_target_position, 0.32)
+		rotation = rotation.lerp(remote_target_rotation, 0.32)
+		return
+
+	var player := _nearest_live_player()
 	if not player:
 		return
 
@@ -74,6 +89,8 @@ func _physics_process(delta: float) -> void:
 		_fire_at(player)
 		fire_cooldown = fire_interval + randf_range(-0.25, 0.35)
 
+	_sync_network_state(delta)
+
 
 func configure(enemy_variant: String, difficulty: float) -> void:
 	variant = enemy_variant
@@ -114,7 +131,13 @@ func configure(enemy_variant: String, difficulty: float) -> void:
 	health = max_health
 
 
+func set_network_id(id: int) -> void:
+	network_id = id
+
+
 func take_damage(amount: int, hit_position: Vector3) -> void:
+	if multiplayer.has_multiplayer_peer() and not multiplayer.is_server():
+		return
 	health -= amount
 	stun_time = 0.25
 	_flash_hit()
@@ -124,6 +147,8 @@ func take_damage(amount: int, hit_position: Vector3) -> void:
 	if health <= 0:
 		if game and game.has_method("spawn_death_burst"):
 			game.spawn_death_burst(global_position)
+		if game and game.has_method("remove_enemy_network") and network_id >= 0:
+			game.remove_enemy_network(network_id)
 		died.emit()
 		queue_free()
 
@@ -131,8 +156,6 @@ func take_damage(amount: int, hit_position: Vector3) -> void:
 func _fire_at(player: Node3D) -> void:
 	var aim_point := player.global_position + Vector3(0, 0.35, 0)
 	for shot in range(burst_shots):
-		var bullet = bullet_scene.instantiate()
-		get_tree().current_scene.add_child(bullet)
 		var spread := Vector3(randf_range(-0.045, 0.045), randf_range(-0.02, 0.04), randf_range(-0.045, 0.045))
 		var direction := (aim_point - muzzle.global_position).normalized() + spread
 		var tint := Color(1, 0.08, 0.04)
@@ -140,7 +163,13 @@ func _fire_at(player: Node3D) -> void:
 			tint = Color(1, 0.82, 0.12)
 		elif variant == "bruiser":
 			tint = Color(1, 0.22, 0.04)
-		bullet.setup(muzzle.global_position, direction.normalized(), bullet_speed, 1, "enemy", tint)
+		var game := get_tree().get_first_node_in_group("game")
+		if game and game.has_method("request_enemy_bullet"):
+			game.request_enemy_bullet(muzzle.global_position, direction.normalized(), bullet_speed, 1, tint)
+		else:
+			var bullet = bullet_scene.instantiate()
+			get_tree().current_scene.add_child(bullet)
+			bullet.setup(muzzle.global_position, direction.normalized(), bullet_speed, 1, "enemy", tint)
 
 
 func _has_line_of_sight(player: Node3D) -> bool:
@@ -189,3 +218,36 @@ func _apply_variant_material() -> void:
 	mat.emission_enabled = true
 	mat.emission_energy_multiplier = 0.9
 	body_mesh.material_override = mat
+
+
+func _nearest_live_player() -> Node3D:
+	var best: Node3D = null
+	var best_distance := INF
+	for candidate in get_tree().get_nodes_in_group("player"):
+		if not candidate is Node3D:
+			continue
+		if candidate.get("dead") == true:
+			continue
+		var distance := global_position.distance_to(candidate.global_position)
+		if distance < best_distance:
+			best_distance = distance
+			best = candidate
+	return best
+
+
+func apply_remote_state(pos: Vector3, rot: Vector3, new_health: int) -> void:
+	remote_target_position = pos
+	remote_target_rotation = rot
+	health = new_health
+
+
+func _sync_network_state(delta: float) -> void:
+	if not multiplayer.has_multiplayer_peer() or not multiplayer.is_server() or network_id < 0:
+		return
+	sync_timer -= delta
+	if sync_timer > 0.0:
+		return
+	sync_timer = 0.08
+	var game := get_tree().get_first_node_in_group("game")
+	if game and game.has_method("sync_enemy_network"):
+		game.sync_enemy_network(network_id, global_position, rotation, health)

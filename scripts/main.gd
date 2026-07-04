@@ -26,6 +26,7 @@ var network_port := 24570
 var discovery_port := 24571
 var max_players := 6
 var spawned_peer_ids := []
+var next_enemy_network_id := 1
 var lobby_code := ""
 var desired_join_code := ""
 var discovery_timer := 0.0
@@ -62,6 +63,11 @@ var host_button: Button
 var join_code_button: Button
 var join_button: Button
 var disconnect_button: Button
+var death_layer: CanvasLayer
+var death_root: Control
+var death_title: Label
+var death_info: Label
+var respawn_button: Button
 
 func _ready() -> void:
 	add_to_group("game")
@@ -69,6 +75,7 @@ func _ready() -> void:
 	_build_world()
 	_build_hud()
 	_build_menu()
+	_build_death_screen()
 	_connect_network_signals()
 	player.health_changed.connect(_on_player_health_changed)
 	player.shot_fired.connect(_on_player_shot)
@@ -98,6 +105,10 @@ func _process(delta: float) -> void:
 		return
 
 	if paused_for_menu or not game_started:
+		return
+
+	if _is_death_screen_visible():
+		_update_hud()
 		return
 
 	if game_over:
@@ -133,6 +144,14 @@ func get_time_factor() -> float:
 	return time_factor
 
 
+func is_game_active() -> bool:
+	return game_started and not paused_for_menu and not game_over
+
+
+func is_player_control_enabled() -> bool:
+	return is_game_active() and not _is_death_screen_visible()
+
+
 func _spawn_wave() -> void:
 	if not _is_wave_authority():
 		return
@@ -140,14 +159,18 @@ func _spawn_wave() -> void:
 	var difficulty := float(wave) * difficulty_scale
 	var count := 2 + int(ceil(wave * 0.85 * difficulty_scale))
 	enemies_alive = count
+	if multiplayer.has_multiplayer_peer():
+		sync_wave_state_network.rpc(wave, enemies_alive)
 	_show_wave_banner("WAVE %d" % wave)
 	for i in range(count):
 		var variant := _pick_enemy_variant()
 		var spawn_pos := _spawn_position(i, count)
 		if multiplayer.has_multiplayer_peer():
-			spawn_enemy_network.rpc(variant, difficulty, spawn_pos)
+			var enemy_id := next_enemy_network_id
+			next_enemy_network_id += 1
+			spawn_enemy_network.rpc(enemy_id, variant, difficulty, spawn_pos)
 		else:
-			_spawn_enemy_instance(variant, difficulty, spawn_pos)
+			_spawn_enemy_instance(-1, variant, difficulty, spawn_pos)
 	if wave == 1:
 		show_pickup_text("SURVIVE")
 	else:
@@ -159,6 +182,8 @@ func _on_enemy_died() -> void:
 	if not _is_wave_authority():
 		return
 	enemies_alive -= 1
+	if multiplayer.has_multiplayer_peer():
+		sync_wave_state_network.rpc(wave, enemies_alive)
 	kills += 1
 	combo += 1
 	combo_timer = 2.4
@@ -171,9 +196,8 @@ func _on_enemy_died() -> void:
 func _on_player_health_changed(health: int, max_health: int) -> void:
 	health_label.text = "HEALTH %d/%d" % [health, max_health]
 	if health <= 0:
-		game_over = true
-		status_label.text = "YOU SHATTERED - PRESS F5"
-		_show_menu("YOU SHATTERED", "TRY AGAIN")
+		status_label.text = "YOU SHATTERED"
+		_show_death_screen()
 
 
 func _on_player_shot() -> void:
@@ -309,6 +333,24 @@ func _spawn_player_bullet_instance(start_position: Vector3, direction: Vector3, 
 	bullet.setup_network(start_position, direction, speed, bullet_damage, "player", tint, shooter_peer_id)
 
 
+func request_enemy_bullet(start_position: Vector3, direction: Vector3, speed: float, bullet_damage: int, tint: Color) -> void:
+	if multiplayer.has_multiplayer_peer() and multiplayer.is_server():
+		spawn_enemy_bullet_network.rpc(start_position, direction, speed, bullet_damage, tint)
+	else:
+		_spawn_enemy_bullet_instance(start_position, direction, speed, bullet_damage, tint)
+
+
+@rpc("authority", "call_local", "reliable")
+func spawn_enemy_bullet_network(start_position: Vector3, direction: Vector3, speed: float, bullet_damage: int, tint: Color) -> void:
+	_spawn_enemy_bullet_instance(start_position, direction, speed, bullet_damage, tint)
+
+
+func _spawn_enemy_bullet_instance(start_position: Vector3, direction: Vector3, speed: float, bullet_damage: int, tint: Color) -> void:
+	var bullet = preload("res://scenes/Bullet.tscn").instantiate()
+	add_child(bullet)
+	bullet.setup(start_position, direction, speed, bullet_damage, "enemy", tint)
+
+
 func _pick_enemy_variant() -> String:
 	if wave <= 1:
 		return "grunt"
@@ -365,13 +407,14 @@ func _spawn_pickup_instance(kind: String, position: Vector3) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
-func spawn_enemy_network(variant: String, difficulty: float, spawn_pos: Vector3) -> void:
-	_spawn_enemy_instance(variant, difficulty, spawn_pos)
+func spawn_enemy_network(enemy_id: int, variant: String, difficulty: float, spawn_pos: Vector3) -> void:
+	_spawn_enemy_instance(enemy_id, variant, difficulty, spawn_pos)
 
 
-func _spawn_enemy_instance(variant: String, difficulty: float, spawn_pos: Vector3) -> void:
+func _spawn_enemy_instance(enemy_id: int, variant: String, difficulty: float, spawn_pos: Vector3) -> void:
 	var enemy = enemy_scene.instantiate()
 	enemy.configure(variant, difficulty)
+	enemy.set_network_id(enemy_id)
 	if _is_wave_authority():
 		enemy.died.connect(_on_enemy_died)
 	add_child(enemy)
@@ -381,6 +424,69 @@ func _spawn_enemy_instance(variant: String, difficulty: float, spawn_pos: Vector
 @rpc("authority", "call_local", "reliable")
 func spawn_pickup_network(kind: String, position: Vector3) -> void:
 	_spawn_pickup_instance(kind, position)
+
+
+@rpc("authority", "call_remote", "reliable")
+func sync_wave_state_network(new_wave: int, new_enemies_alive: int) -> void:
+	var changed_wave := new_wave != wave
+	wave = new_wave
+	enemies_alive = new_enemies_alive
+	if changed_wave:
+		_show_wave_banner("WAVE %d" % wave)
+	_update_hud()
+
+
+func request_enemy_damage(enemy_id: int, amount: int, hit_position: Vector3) -> void:
+	if not multiplayer.has_multiplayer_peer():
+		return
+	if multiplayer.is_server():
+		_apply_enemy_damage(enemy_id, amount, hit_position)
+	else:
+		request_enemy_damage_server.rpc_id(1, enemy_id, amount, hit_position)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func request_enemy_damage_server(enemy_id: int, amount: int, hit_position: Vector3) -> void:
+	if multiplayer.is_server():
+		_apply_enemy_damage(enemy_id, amount, hit_position)
+
+
+func _apply_enemy_damage(enemy_id: int, amount: int, hit_position: Vector3) -> void:
+	var enemy := _find_enemy_by_id(enemy_id)
+	if enemy and enemy.has_method("take_damage"):
+		enemy.take_damage(amount, hit_position)
+
+
+func sync_enemy_network(enemy_id: int, pos: Vector3, rot: Vector3, health: int) -> void:
+	if multiplayer.has_multiplayer_peer() and multiplayer.is_server():
+		sync_enemy_state_network.rpc(enemy_id, pos, rot, health)
+
+
+@rpc("authority", "call_remote", "unreliable")
+func sync_enemy_state_network(enemy_id: int, pos: Vector3, rot: Vector3, health: int) -> void:
+	var enemy := _find_enemy_by_id(enemy_id)
+	if enemy and enemy.has_method("apply_remote_state"):
+		enemy.apply_remote_state(pos, rot, health)
+
+
+func remove_enemy_network(enemy_id: int) -> void:
+	if multiplayer.has_multiplayer_peer() and multiplayer.is_server():
+		remove_enemy_network_rpc.rpc(enemy_id)
+
+
+@rpc("authority", "call_remote", "reliable")
+func remove_enemy_network_rpc(enemy_id: int) -> void:
+	var enemy := _find_enemy_by_id(enemy_id)
+	if enemy:
+		spawn_death_burst(enemy.global_position)
+		enemy.queue_free()
+
+
+func _find_enemy_by_id(enemy_id: int) -> Node:
+	for enemy in get_tree().get_nodes_in_group("enemy"):
+		if enemy.get("network_id") == enemy_id:
+			return enemy
+	return null
 
 
 func _random_pickup_kind() -> String:
@@ -867,6 +973,50 @@ func _build_menu() -> void:
 	play_tab.add_child(quit_button)
 
 
+func _build_death_screen() -> void:
+	death_layer = CanvasLayer.new()
+	death_layer.layer = 12
+	add_child(death_layer)
+
+	death_root = Control.new()
+	death_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	death_root.visible = false
+	death_layer.add_child(death_root)
+
+	var shade := ColorRect.new()
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.color = Color(0.25, 0.0, 0.0, 0.72)
+	death_root.add_child(shade)
+
+	var panel := PanelContainer.new()
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.offset_left = -230
+	panel.offset_top = -135
+	panel.offset_right = 230
+	panel.offset_bottom = 135
+	death_root.add_child(panel)
+
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 14)
+	panel.add_child(box)
+
+	death_title = Label.new()
+	death_title.text = "YOU DIED"
+	death_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	death_title.add_theme_font_size_override("font_size", 42)
+	box.add_child(death_title)
+
+	death_info = Label.new()
+	death_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	death_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(death_info)
+
+	respawn_button = Button.new()
+	respawn_button.text = "RESPAWN"
+	respawn_button.pressed.connect(_on_respawn_pressed)
+	box.add_child(respawn_button)
+
+
 func _make_label(pos: Vector2, font_size: int) -> Label:
 	var label := Label.new()
 	label.position = pos
@@ -914,15 +1064,14 @@ func _show_menu(title: String, action_text: String) -> void:
 
 
 func _resume_game() -> void:
+	if _is_death_screen_visible():
+		return
 	paused_for_menu = false
 	menu_root.visible = false
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func _on_start_pressed() -> void:
-	if game_over:
-		get_tree().reload_current_scene()
-		return
 	if not game_started:
 		game_started = true
 		_resume_game()
@@ -947,6 +1096,36 @@ func _on_difficulty_selected(index: int) -> void:
 
 func _on_flash_toggled(enabled: bool) -> void:
 	screen_flash_enabled = enabled
+
+
+func _show_death_screen() -> void:
+	if not death_root:
+		return
+	death_root.visible = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	var code_text := lobby_code if not lobby_code.is_empty() else desired_join_code
+	var join_text := "Lobby: %s   IP: %s   Port: %d" % [code_text if not code_text.is_empty() else "single-player", ip_edit.text if ip_edit else "-", network_port]
+	death_info.text = "%s\nRespawn keeps you in the same lobby." % join_text
+
+
+func _hide_death_screen() -> void:
+	if death_root:
+		death_root.visible = false
+	if game_started and not paused_for_menu:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+func _is_death_screen_visible() -> bool:
+	return death_root and death_root.visible
+
+
+func _on_respawn_pressed() -> void:
+	var peer_id := multiplayer.get_unique_id() if multiplayer.has_multiplayer_peer() else 1
+	var spawn_pos := _network_spawn_position(peer_id) + Vector3(randf_range(-1.0, 1.0), 0.0, randf_range(-1.0, 1.0))
+	if player and player.has_method("respawn"):
+		player.respawn(spawn_pos)
+	_hide_death_screen()
+	_update_hud()
 
 
 func _connect_network_signals() -> void:

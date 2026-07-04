@@ -33,4 +33,6 @@ Use the `Lobby` tab from the menu:
 - Join by IP: if LAN broadcast is blocked, enter the host machine's local IP address and port, then press `JOIN BY IP`.
 - Start/resume from the `Play` tab after hosting or joining.
 
-The host controls wave spawning. Connected players get their own first-person body, player movement is synchronized, wave enemy spawns and pickups are shared, and player bullets can damage/take out other players in the same lobby.
+The host controls wave spawning and enemy simulation, then syncs enemy positions, health, deaths, wave counts, enemy bullets, and pickups to everyone else. Connected players get their own first-person body, player movement is synchronized, and player bullets can damage/take out other players in the same lobby.
+
+If you die in a LAN lobby, the game shows a `YOU DIED` screen with the current lobby code/IP details and a `RESPAWN` button. Respawning keeps you in the same lobby instead of kicking you back out. Menus and death screens block movement, shooting, abilities, and local damage until you press Play or Respawn.

@@ -75,6 +75,9 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not _is_locally_controlled():
 		return
+	var game := get_tree().get_first_node_in_group("game")
+	if game and game.has_method("is_player_control_enabled") and not game.is_player_control_enabled():
+		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not dead:
 		rotate_y(-event.relative.x * mouse_sensitivity)
 		pitch = clampf(pitch - event.relative.y * mouse_sensitivity, deg_to_rad(-84), deg_to_rad(84))
@@ -84,6 +87,10 @@ func _unhandled_input(event: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	_update_network_control()
 	if not _is_locally_controlled():
+		return
+	var game := get_tree().get_first_node_in_group("game")
+	if game and game.has_method("is_player_control_enabled") and not game.is_player_control_enabled():
+		velocity = Vector3.ZERO
 		return
 	if dead:
 		velocity = Vector3.ZERO
@@ -147,6 +154,9 @@ func take_damage(amount: int, _hit_position: Vector3) -> void:
 		return
 	if multiplayer.has_multiplayer_peer() and not _is_locally_controlled():
 		return
+	var game := get_tree().get_first_node_in_group("game")
+	if game and game.has_method("is_player_control_enabled") and not game.is_player_control_enabled():
+		return
 	if shield_timer > 0.0:
 		amount = max(amount - 1, 0)
 		if amount <= 0:
@@ -169,6 +179,18 @@ func get_motion_strength() -> float:
 func heal(amount: int) -> void:
 	health = min(health + amount, max_health)
 	health_changed.emit(health, max_health)
+
+
+func respawn(spawn_position: Vector3) -> void:
+	dead = false
+	health = max_health
+	velocity = Vector3.ZERO
+	global_position = spawn_position
+	remote_target_position = spawn_position
+	health_changed.emit(health, max_health)
+	_apply_player_material()
+	_sync_health_state()
+	_send_respawn_state()
 
 
 func add_ammo(amount: int) -> void:
@@ -396,6 +418,11 @@ func _sync_health_state() -> void:
 		sync_remote_health.rpc(health, dead)
 
 
+func _send_respawn_state() -> void:
+	if multiplayer.has_multiplayer_peer() and is_multiplayer_authority():
+		sync_remote_respawn.rpc(global_position, health)
+
+
 @rpc("any_peer", "call_remote", "reliable")
 func sync_remote_health(new_health: int, is_dead: bool) -> void:
 	if is_multiplayer_authority():
@@ -412,3 +439,15 @@ func sync_remote_health(new_health: int, is_dead: bool) -> void:
 			mat.emission = Color(0.35, 0.0, 0.0)
 			mat.emission_energy_multiplier = 0.5
 			body.material_override = mat
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func sync_remote_respawn(spawn_position: Vector3, new_health: int) -> void:
+	if is_multiplayer_authority():
+		return
+	dead = false
+	health = new_health
+	global_position = spawn_position
+	remote_target_position = spawn_position
+	velocity = Vector3.ZERO
+	_apply_player_material()
