@@ -62,7 +62,6 @@ var sfx_slider: HSlider
 var difficulty_button: OptionButton
 var flash_toggle: CheckButton
 var lobby_label: Label
-var port_spin: SpinBox
 var code_edit: LineEdit
 var host_button: Button
 var join_code_button: Button
@@ -1114,17 +1113,6 @@ func _build_menu() -> void:
 	code_edit.add_theme_stylebox_override("focus", _panel_style(Color(0.03, 0.055, 0.065, 0.95), Color(0.0, 0.88, 1.0, 0.95), 2, 4))
 	lobby_tab.add_child(code_edit)
 
-	var port_label := Label.new()
-	port_label.text = "Lobby Port"
-	port_label.modulate = Color(0.62, 0.76, 0.82)
-	lobby_tab.add_child(port_label)
-	port_spin = SpinBox.new()
-	port_spin.min_value = 1024
-	port_spin.max_value = 65535
-	port_spin.value = network_port
-	port_spin.custom_minimum_size = Vector2(0, 42)
-	lobby_tab.add_child(port_spin)
-
 	host_button = Button.new()
 	host_button.text = "HOST CODE LOBBY"
 	host_button.pressed.connect(_on_host_pressed)
@@ -1380,7 +1368,7 @@ func _show_death_screen() -> void:
 	_set_hud_visible(false)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	var code_text := lobby_code if not lobby_code.is_empty() else desired_join_code
-	var join_text := "Lobby code: %s   Port: %d" % [code_text if not code_text.is_empty() else "single-player", network_port]
+	var join_text := "Lobby code: %s" % (code_text if not code_text.is_empty() else "single-player")
 	death_info.text = "%s\nRespawn keeps you in the same lobby." % join_text
 
 
@@ -1420,11 +1408,10 @@ func _is_wave_authority() -> bool:
 
 func _on_host_pressed() -> void:
 	play_sfx("ui_confirm", 0.02)
-	network_port = int(port_spin.value)
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_server(network_port, max_players)
 	if err != OK:
-		_set_lobby_status("Host failed on port %d" % network_port)
+		_set_lobby_status("Host failed. Check firewall/network permissions.")
 		return
 	multiplayer.multiplayer_peer = peer
 	network_mode = "host"
@@ -1610,7 +1597,6 @@ func _update_lobby_discovery(delta: float) -> void:
 			var parts := message.split("|")
 			if parts.size() == 3 and parts[0] == "GREATER_GAME" and parts[1] == desired_join_code:
 				var host_ip := discovery_listener.get_packet_ip()
-				port_spin.value = int(parts[2])
 				_stop_lobby_discovery()
 				_set_lobby_status("Found lobby %s. Connecting..." % desired_join_code)
 				_connect_to_discovered_lobby(host_ip, int(parts[2]))
