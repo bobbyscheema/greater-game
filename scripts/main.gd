@@ -74,7 +74,9 @@ var death_title: Label
 var death_info: Label
 var respawn_button: Button
 var menu_bg_lines: Array[ColorRect] = []
-var music_player: AudioStreamPlayer
+var lobby_music_player: AudioStreamPlayer
+var battle_music_player: AudioStreamPlayer
+var current_music_mode := ""
 
 func _ready() -> void:
 	add_to_group("game")
@@ -811,13 +813,9 @@ func _build_hud() -> void:
 
 
 func _build_audio() -> void:
-	music_player = AudioStreamPlayer.new()
-	music_player.stream = load("res://assets/audio/space_theme_loop.wav")
-	if music_player.stream is AudioStreamWAV:
-		(music_player.stream as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_FORWARD
-	music_player.volume_db = _volume_to_db(music_volume)
-	add_child(music_player)
-	music_player.play()
+	lobby_music_player = _make_music_player("res://assets/audio/lobby-music.mp3", "lobby")
+	battle_music_player = _make_music_player("res://assets/audio/battle-music.mp3", "battle")
+	_play_lobby_music()
 
 	sfx_streams = {
 		"death": load("res://assets/audio/death.wav"),
@@ -857,6 +855,50 @@ func play_sfx(sound_name: String, pitch_jitter := 0.0) -> void:
 	player_node.volume_db = _volume_to_db(sfx_volume)
 	player_node.pitch_scale = 1.0 + randf_range(-pitch_jitter, pitch_jitter)
 	player_node.play()
+
+
+func _make_music_player(path: String, mode: String) -> AudioStreamPlayer:
+	var player_node := AudioStreamPlayer.new()
+	player_node.stream = load(path)
+	_enable_music_loop(player_node.stream)
+	player_node.volume_db = _volume_to_db(music_volume)
+	player_node.finished.connect(_on_music_finished.bind(player_node, mode))
+	add_child(player_node)
+	return player_node
+
+
+func _enable_music_loop(stream: AudioStream) -> void:
+	if stream is AudioStreamWAV:
+		(stream as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_FORWARD
+	elif stream is AudioStreamMP3:
+		(stream as AudioStreamMP3).loop = true
+	elif stream is AudioStreamOggVorbis:
+		(stream as AudioStreamOggVorbis).loop = true
+
+
+func _play_lobby_music() -> void:
+	if current_music_mode == "lobby":
+		return
+	current_music_mode = "lobby"
+	if battle_music_player:
+		battle_music_player.stop()
+	if lobby_music_player and not lobby_music_player.playing:
+		lobby_music_player.play()
+
+
+func _play_battle_music() -> void:
+	if current_music_mode == "battle":
+		return
+	current_music_mode = "battle"
+	if lobby_music_player:
+		lobby_music_player.stop()
+	if battle_music_player and not battle_music_player.playing:
+		battle_music_player.play()
+
+
+func _on_music_finished(player_node: AudioStreamPlayer, mode: String) -> void:
+	if current_music_mode == mode and player_node:
+		player_node.play()
 
 
 func _volume_to_db(value: float) -> float:
@@ -1270,6 +1312,7 @@ func _show_menu(title: String, action_text: String) -> void:
 	paused_for_menu = true
 	menu_root.visible = true
 	_set_hud_visible(false)
+	_play_lobby_music()
 	menu_title.text = title
 	start_button.text = action_text
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -1280,6 +1323,7 @@ func _resume_game() -> void:
 	if _is_death_screen_visible():
 		return
 	play_sfx("ui_confirm", 0.02)
+	_play_battle_music()
 	paused_for_menu = false
 	menu_root.visible = false
 	_set_hud_visible(true)
@@ -1301,8 +1345,10 @@ func _on_sensitivity_changed(value: float) -> void:
 
 func _on_music_volume_changed(value: float) -> void:
 	music_volume = value
-	if music_player:
-		music_player.volume_db = _volume_to_db(music_volume)
+	if lobby_music_player:
+		lobby_music_player.volume_db = _volume_to_db(music_volume)
+	if battle_music_player:
+		battle_music_player.volume_db = _volume_to_db(music_volume)
 
 
 func _on_sfx_volume_changed(value: float) -> void:
