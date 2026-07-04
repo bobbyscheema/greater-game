@@ -32,6 +32,10 @@ var desired_join_code := ""
 var discovery_timer := 0.0
 var discovery_broadcaster: PacketPeerUDP
 var discovery_listener: PacketPeerUDP
+var music_volume := 0.55
+var sfx_volume := 0.8
+var sfx_streams := {}
+var sfx_players := []
 
 @onready var player = $Player
 
@@ -53,6 +57,8 @@ var menu_root: Control
 var menu_title: Label
 var start_button: Button
 var sensitivity_slider: HSlider
+var music_slider: HSlider
+var sfx_slider: HSlider
 var difficulty_button: OptionButton
 var flash_toggle: CheckButton
 var lobby_label: Label
@@ -68,12 +74,14 @@ var death_title: Label
 var death_info: Label
 var respawn_button: Button
 var menu_bg_lines: Array[ColorRect] = []
+var music_player: AudioStreamPlayer
 
 func _ready() -> void:
 	add_to_group("game")
 	randomize()
 	_build_world()
 	_build_hud()
+	_build_audio()
 	_build_menu()
 	_build_death_screen()
 	_set_hud_visible(false)
@@ -204,10 +212,12 @@ func _on_player_health_changed(health: int, max_health: int) -> void:
 
 func _on_player_shot() -> void:
 	time_factor = maxf(time_factor, 0.35)
+	play_sfx("shoot", 0.06)
 
 
 func _on_player_damaged() -> void:
 	damage_flash = 1.0
+	play_sfx("hit", 0.04)
 
 
 func _on_player_ammo_changed(ammo: int, magazine_size: int, reserve_ammo: int) -> void:
@@ -224,6 +234,7 @@ func _on_weapon_changed(weapon_name: String, unlocked_weapons: Array) -> void:
 func _on_reload_state_changed(is_reloading: bool) -> void:
 	if is_reloading:
 		status_label.text = "RELOADING"
+		play_sfx("reload", 0.03)
 
 
 func _on_ability_changed(dash_cooldown_value: float, dash_ready: bool) -> void:
@@ -234,6 +245,7 @@ func _on_ability_changed(dash_cooldown_value: float, dash_ready: bool) -> void:
 func show_pickup_text(text: String) -> void:
 	pickup_label.text = text
 	pickup_text_timer = 1.5
+	play_sfx("pickup", 0.05)
 
 
 func open_weapon_crate(target_player: Node) -> void:
@@ -271,6 +283,7 @@ func spawn_impact(position: Vector3, tint: Color) -> void:
 
 
 func spawn_death_burst(position: Vector3) -> void:
+	play_sfx("death", 0.05)
 	for i in range(18):
 		var shard := MeshInstance3D.new()
 		var mesh := BoxMesh.new()
@@ -797,6 +810,61 @@ func _build_hud() -> void:
 	hud_layer.add_child(flash_rect)
 
 
+func _build_audio() -> void:
+	music_player = AudioStreamPlayer.new()
+	music_player.stream = load("res://assets/audio/music_loop.wav")
+	if music_player.stream is AudioStreamWAV:
+		(music_player.stream as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_FORWARD
+	music_player.volume_db = _volume_to_db(music_volume)
+	add_child(music_player)
+	music_player.play()
+
+	sfx_streams = {
+		"death": load("res://assets/audio/death.wav"),
+		"hit": load("res://assets/audio/hit.wav"),
+		"pickup": load("res://assets/audio/pickup.wav"),
+		"reload": load("res://assets/audio/reload.wav"),
+		"respawn": load("res://assets/audio/respawn.wav"),
+		"shoot": load("res://assets/audio/shoot.wav"),
+		"ui_click": load("res://assets/audio/ui_click.wav"),
+		"ui_confirm": load("res://assets/audio/ui_confirm.wav"),
+		"wave": load("res://assets/audio/wave.wav")
+	}
+
+	for i in range(14):
+		var player_node := AudioStreamPlayer.new()
+		player_node.volume_db = _volume_to_db(sfx_volume)
+		add_child(player_node)
+		sfx_players.append(player_node)
+
+
+func play_sfx(sound_name: String, pitch_jitter := 0.0) -> void:
+	if not sfx_streams.has(sound_name):
+		return
+
+	var player_node: AudioStreamPlayer = null
+	for candidate in sfx_players:
+		if candidate is AudioStreamPlayer and not candidate.playing:
+			player_node = candidate
+			break
+	if not player_node and not sfx_players.is_empty():
+		player_node = sfx_players[0]
+	if not player_node:
+		return
+
+	player_node.stop()
+	player_node.stream = sfx_streams[sound_name]
+	player_node.volume_db = _volume_to_db(sfx_volume)
+	player_node.pitch_scale = 1.0 + randf_range(-pitch_jitter, pitch_jitter)
+	player_node.play()
+
+
+func _volume_to_db(value: float) -> float:
+	if value <= 0.01:
+		return -60.0
+	return linear_to_db(value)
+
+
 func _build_menu() -> void:
 	menu_layer = CanvasLayer.new()
 	menu_layer.layer = 10
@@ -876,10 +944,51 @@ func _build_menu() -> void:
 	weapon_info.modulate = Color(0.62, 0.76, 0.82)
 	play_tab.add_child(weapon_info)
 
+	var settings_scroll := ScrollContainer.new()
+	settings_scroll.name = "Settings"
+	settings_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	tabs.add_child(settings_scroll)
+
 	var settings_tab := VBoxContainer.new()
-	settings_tab.name = "Settings"
 	settings_tab.add_theme_constant_override("separation", 11)
-	tabs.add_child(settings_tab)
+	settings_tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	settings_scroll.add_child(settings_tab)
+
+	var audio_header := Label.new()
+	audio_header.text = "Audio"
+	audio_header.modulate = Color(0.85, 1.0, 1.0)
+	audio_header.add_theme_font_size_override("font_size", 18)
+	settings_tab.add_child(audio_header)
+
+	var music_label := Label.new()
+	music_label.text = "Music Volume"
+	music_label.modulate = Color(0.84, 0.94, 0.96)
+	settings_tab.add_child(music_label)
+	music_slider = HSlider.new()
+	music_slider.min_value = 0.0
+	music_slider.max_value = 1.0
+	music_slider.step = 0.05
+	music_slider.value = music_volume
+	music_slider.value_changed.connect(_on_music_volume_changed)
+	settings_tab.add_child(music_slider)
+
+	var sfx_label := Label.new()
+	sfx_label.text = "SFX Volume"
+	sfx_label.modulate = Color(0.84, 0.94, 0.96)
+	settings_tab.add_child(sfx_label)
+	sfx_slider = HSlider.new()
+	sfx_slider.min_value = 0.0
+	sfx_slider.max_value = 1.0
+	sfx_slider.step = 0.05
+	sfx_slider.value = sfx_volume
+	sfx_slider.value_changed.connect(_on_sfx_volume_changed)
+	settings_tab.add_child(sfx_slider)
+
+	var gameplay_header := Label.new()
+	gameplay_header.text = "Gameplay"
+	gameplay_header.modulate = Color(0.85, 1.0, 1.0)
+	gameplay_header.add_theme_font_size_override("font_size", 18)
+	settings_tab.add_child(gameplay_header)
 
 	var sens_label := Label.new()
 	sens_label.text = "Mouse Sensitivity: affects first-person camera turn speed."
@@ -1148,6 +1257,7 @@ func _update_hud() -> void:
 
 
 func _show_wave_banner(text: String) -> void:
+	play_sfx("wave", 0.02)
 	wave_banner_label.text = text
 	wave_banner_label.modulate = Color(0.85, 1.0, 1.0, 0.0)
 	var tween := create_tween()
@@ -1169,6 +1279,7 @@ func _show_menu(title: String, action_text: String) -> void:
 func _resume_game() -> void:
 	if _is_death_screen_visible():
 		return
+	play_sfx("ui_confirm", 0.02)
 	paused_for_menu = false
 	menu_root.visible = false
 	_set_hud_visible(true)
@@ -1188,7 +1299,19 @@ func _on_sensitivity_changed(value: float) -> void:
 	player.mouse_sensitivity = value / 100.0
 
 
+func _on_music_volume_changed(value: float) -> void:
+	music_volume = value
+	if music_player:
+		music_player.volume_db = _volume_to_db(music_volume)
+
+
+func _on_sfx_volume_changed(value: float) -> void:
+	sfx_volume = value
+	play_sfx("ui_click", 0.02)
+
+
 func _on_difficulty_selected(index: int) -> void:
+	play_sfx("ui_click", 0.02)
 	match index:
 		0:
 			difficulty_scale = 0.78
@@ -1200,11 +1323,13 @@ func _on_difficulty_selected(index: int) -> void:
 
 func _on_flash_toggled(enabled: bool) -> void:
 	screen_flash_enabled = enabled
+	play_sfx("ui_click", 0.02)
 
 
 func _show_death_screen() -> void:
 	if not death_root:
 		return
+	play_sfx("death", 0.0)
 	death_root.visible = true
 	_set_hud_visible(false)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -1226,6 +1351,7 @@ func _is_death_screen_visible() -> bool:
 
 
 func _on_respawn_pressed() -> void:
+	play_sfx("respawn", 0.02)
 	var peer_id := multiplayer.get_unique_id() if multiplayer.has_multiplayer_peer() else 1
 	var spawn_pos := _network_spawn_position(peer_id) + Vector3(randf_range(-1.0, 1.0), 0.0, randf_range(-1.0, 1.0))
 	if player and player.has_method("respawn"):
@@ -1247,6 +1373,7 @@ func _is_wave_authority() -> bool:
 
 
 func _on_host_pressed() -> void:
+	play_sfx("ui_confirm", 0.02)
 	network_port = int(port_spin.value)
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_server(network_port, max_players)
@@ -1263,6 +1390,7 @@ func _on_host_pressed() -> void:
 
 
 func _on_join_code_pressed() -> void:
+	play_sfx("ui_confirm", 0.02)
 	desired_join_code = code_edit.text.strip_edges().to_upper()
 	if desired_join_code.is_empty():
 		_set_lobby_status("Enter a lobby code first.")
@@ -1285,6 +1413,7 @@ func _connect_to_discovered_lobby(host_ip: String, port: int) -> void:
 
 
 func _on_disconnect_pressed() -> void:
+	play_sfx("ui_click", 0.02)
 	if multiplayer.has_multiplayer_peer():
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = null
