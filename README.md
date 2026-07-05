@@ -1,41 +1,157 @@
 # Timebreak Arena
 
-A Godot 4.7 first-person arena shooter with time-bending combat, wave survival, LAN lobbies, weapon crates, and PvP-friendly local multiplayer.
+**Timebreak Arena** is a fast-paced first-person arena shooter built in **Godot 4.7** featuring time manipulation, wave survival, weapon progression, and LAN multiplayer.
 
-## Play
+## Features
 
-- `WASD`: move
-- `Shift`: sprint
-- `Space`: jump
-- Left mouse: shoot
-- `R`: reload
-- Right mouse: hold slow time
-- `E`: time burst, spends slow charge to clear nearby enemy shots and damage close enemies
-- `Q`: dash
-- `1-4`: switch unlocked weapons
-- `Esc`: pause/settings menu
-- `F5`: restart
+- Time manipulation combat system
+- Endless wave-based survival
+- Multiple enemy types with increasing difficulty
+- Weapon unlocks through crates
+- Power-up system
+- Dash and Time Burst abilities
+- LAN multiplayer with lobby codes
+- Adjustable game settings
 
-## Loop
+---
 
-Enemies spawn in escalating waves, chase, strafe, and shoot at you. Time crawls when you stand still, speeds up as you move or fire, and can be manually frozen while you have slow charge. Kills refill slow charge and build short combos.
+## Controls
 
-Pickups can restore ammo or health, boost speed, shield damage, overcharge shots, add a stronger damage buff, grant short infinite ammo, reset dash, or unlock weapons from crates. Crates can unlock shotgun, sniper, SMG, and railgun. Enemy waves start with basic enemies and add runners, snipers, and bruisers as the wave number climbs.
+| Action | Key |
+|--------|-----|
+| Move | WASD |
+| Sprint | Left Shift |
+| Jump | Space |
+| Shoot | Left Mouse |
+| Aim | Right Mouse |
+| Reload | R |
+| Time Burst | E |
+| Dash | Q |
+| Switch Weapons | 1–4 |
+| Pause | Esc |
+| Restart | F5 |
 
-The pause/menu screen has Play, Settings, and Info tabs. Settings currently cover mouse sensitivity, difficulty, and damage flash.
+---
 
-## LAN Multiplayer
+# Gameplay
 
-Use the `Lobby` tab from the menu:
+Survive increasingly difficult waves of futuristic enemies in a cyberpunk arena.
 
-- Host: choose a port and press `HOST CODE LOBBY`. The game generates a short lobby code.
-- Join by code: enter the host's lobby code and press `JOIN BY CODE`. The game searches the LAN and connects automatically.
-- Start/resume from the `Play` tab after hosting or joining.
+Time itself reacts to your actions:
 
-The host controls wave spawning and enemy simulation, then syncs enemy positions, health, deaths, wave counts, enemy bullets, and pickups to everyone else. Connected players get their own first-person body, player movement is synchronized, and player bullets can damage/take out other players in the same lobby.
+- Standing still slows time dramatically.
+- Moving or firing speeds time back up.
+- Holding **Right Mouse** manually slows time while consuming Slow Charge.
+- Eliminating enemies restores Slow Charge and builds short combo streaks.
 
-If you die in a LAN lobby, the game shows a `YOU DIED` screen with the current lobby code and a `RESPAWN` button. Respawning keeps you in the same lobby instead of kicking you back out. Menus and death screens block movement, shooting, abilities, and local damage until you press Play or Respawn.
+Mastering time control is the key to surviving later waves.
 
-## Publishing Notes
+---
 
-The project avoids external art dependencies by generating its arena, buildings, lighting, pickups, bullets, and UI in Godot. The menu is code-only for LAN joining, so players can host and join without manually handling IP addresses.
+# Weapons
+
+Unlock stronger weapons from supply crates:
+
+- Pistol
+- SMG
+- Shotgun
+- Sniper Rifle
+- Railgun
+
+Each weapon offers a unique playstyle for different enemy encounters.
+
+---
+
+# Power-Ups
+
+Random pickups can grant:
+
+- Health restoration
+- Ammo refill
+- Movement speed boost
+- Damage shield
+- Damage boost
+- Overcharged shots
+- Infinite ammo (temporary)
+- Dash reset
+- Weapon crate unlocks
+
+Strategic pickup usage becomes increasingly important as difficulty rises.
+
+---
+
+# Enemy Types
+
+Enemy waves become progressively harder by introducing new enemy classes:
+
+- Basic Soldiers
+- Runners
+- Snipers
+- Bruisers
+
+Enemies chase, strafe, and fire projectiles while the wave count continuously increases.
+
+---
+
+# LAN Multiplayer
+
+Host or join local multiplayer games using built-in lobby codes.
+
+### Hosting
+
+1. Open the **Lobby** tab.
+2. Choose a port.
+3. Press **Host Code Lobby**.
+4. Share the generated lobby code.
+
+### Joining
+
+1. Enter the host's lobby code.
+2. Press **Join by Code**.
+3. The game automatically discovers the host over the local network.
+
+The host synchronizes:
+
+- Enemy AI
+- Enemy positions
+- Enemy health
+- Bullets
+- Pickups
+- Wave progression
+
+Players have synchronized movement and can damage each other, making LAN sessions PvP-friendly.
+
+If a player dies, they remain in the lobby and can immediately respawn without reconnecting.
+
+---
+
+# Settings
+
+The pause menu includes:
+
+- Mouse Sensitivity
+- Difficulty
+- Damage Flash Toggle
+
+---
+
+# Built With
+
+- Godot Engine 4.7
+- GDScript
+
+All gameplay systems, arena generation, UI, pickups, lighting, and multiplayer functionality were built directly in Godot without relying on external art assets.
+
+---
+
+# Screenshots
+
+*(Add gameplay screenshots or GIFs here.)*
+
+---
+
+# License
+
+Copyright © 2026 Bobby Cheema. All rights reserved.
+
+This project is proprietary. The source code may not be copied, modified, or redistributed without permission.
